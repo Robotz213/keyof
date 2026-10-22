@@ -12,12 +12,20 @@ from .conftest import (
     OtherData,
 )
 
+DataAlias = OtherData
+
 
 @pytest.mark.mypy_testing
 def test_key() -> None:
     _key: DataKey = "version"
     _key = "foo"  # E: [assignment]
     _key = 123  # E: [assignment]
+
+
+@pytest.mark.mypy_testing
+def test_typed_dict_alias() -> None:
+    _key: KeyOf[DataAlias] = "other"
+    _key = "foo"  # E: [assignment]
 
 
 @pytest.mark.mypy_testing
@@ -65,8 +73,7 @@ def test_runtime_behavior(cls: type) -> None:
         cls()
     with pytest.raises(TypeError):
 
-        class _SubClass(cls):
-            ...
+        class _SubClass(cls): ...
 
 
 @pytest.mark.mypy_testing

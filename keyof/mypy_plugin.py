@@ -1,19 +1,16 @@
 from collections.abc import Callable
-from typing import Final, cast
+from typing import Final
 
 from mypy.errorcodes import TYPE_ARG
-from mypy.nodes import TypeInfo
 from mypy.plugin import AnalyzeTypeContext, Plugin, TypeAnalyzerPluginInterface
-from mypy.typeanal import TypeAnalyser
 from mypy.types import (
     AnyType,
     LiteralType,
     Type,
-    TypeAliasType,
     TypedDictType,
     TypeOfAny,
-    UnboundType,
     UnionType,
+    get_proper_type,
 )
 
 _MIN_MYPY_VERSION = (1, 0, 1)
@@ -33,18 +30,8 @@ def _create_string_literal(value: str, api: TypeAnalyzerPluginInterface) -> Lite
     return LiteralType(value, api.named_type("builtins.str", []))
 
 
-def _default_type_analysis(api: TypeAnalyser, type_: UnboundType) -> Type:
-    symbol_table_node = api.lookup_qualified(type_.name, type_)
-    if symbol_table_node is None:
-        return AnyType(TypeOfAny.special_form)
-    node = symbol_table_node.node
-    if isinstance(node, TypeInfo):
-        return api.analyze_type_with_type_info(node, type_.args, type_)
-    return AnyType(TypeOfAny.special_form)
-
-
 def _analyze_typed_dict_key(ctx: AnalyzeTypeContext) -> Type:
-    api = cast(TypeAnalyser, ctx.api)
+    api = ctx.api
     type_name = ctx.type.name
     if (args_len := len(ctx.type.args)) != 1:
         api.fail(
@@ -52,17 +39,15 @@ def _analyze_typed_dict_key(ctx: AnalyzeTypeContext) -> Type:
             ctx.context,
             code=TYPE_ARG,
         )
-        return _default_type_analysis(api, ctx.type)
+        return AnyType(TypeOfAny.from_error)
     argument = ctx.type.args[0]
-    analyzed: Type | None = ctx.api.analyze_type(argument)
-    if isinstance(analyzed, TypeAliasType):
-        analyzed = analyzed.expand_all_if_possible()
+    analyzed = get_proper_type(api.analyze_type(argument))
     if not isinstance(analyzed, TypedDictType):
         api.fail(
             f'Argument 1 to "{type_name}" has incompatible type "{analyzed}"; expected "TypedDict"',
             ctx.context,
         )
-        return _default_type_analysis(api, ctx.type)
+        return AnyType(TypeOfAny.from_error)
     match type_name:
         case "KeyOf" | "keyof.KeyOf" | "keyof.compat.KeyOf":
             keys = set(analyzed.items.keys())
